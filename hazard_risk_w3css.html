@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+
+<meta charset="utf-8">
+
+<style>
+    /* set the CSS */
+
+    .body {
+        font: 11px sans-serif;
+    }
+
+
+    .line {
+        fill: none;
+        stroke: steelblue;
+        stroke-width: 2px;
+    }
+
+    div.tooltip {
+        position: absolute;
+        text-align: center;
+        width: 90px;
+        height: 100px;
+        padding: 2px;
+        font: 12px sans-serif;
+        background: white;
+        border: 0px;
+        border-radius: 8px;
+        pointer-events: none;
+    }
+    
+    div.a {
+    	cursor: pointer;
+    }
+    
+     .axis text {
+        font: 11px sans-serif;
+      }
+
+      .x-axis path,
+      .x-axis line ,
+      .y-axis path,
+      .y-axis line{
+        fill: none;
+        stroke: #D4D8DA; 
+        shape-rendering: crispEdges;
+      }
+
+      .line {
+        fill: none;
+       // stroke: #000;
+        stroke-width: 1.5px;
+      }
+      
+      .riskLine {
+      	fill: none;
+      	opacity: 0.8;
+      	stroke: dashed;
+      }
+
+    .axis path, .axis line {
+        fill: none;
+        stroke: none;
+    }
+    
+    .dateRange {
+        font-weight: bold;
+        font: 10px sans-serif;
+    }
+
+    .legend {
+        font-size: 12px;
+        font-weight: bold;
+        text-anchor: end;
+        cursor: pointer;
+    }
+
+    div.data {
+        font: 12 px sans-serif;
+    }
+    
+    .dot {
+    	cursor: pointer;
+    }
+    
+    .activityList, .activityList.H5{   
+    	font: 10px sans-serif;
+    	left: 25px;
+    
+    }
+    .div2{
+    	left:10px;
+    }
+     .svg-container {
+    display: block;
+    position: relative;
+    width: 100%;
+    padding-bottom: 50%; /* aspect ratio */
+    vertical-align: top;
+    overflow: hidden;
+}
+.svg-content-responsive {
+    display: inline-block;
+    position: absolute;
+    top: 0;
+    left: 0;
+}
+    
+</style>
+
+<body>
+<div class="w3-card-4 w3-white w3-round">
+ <div  id="riskAPIChart"></div>
+ </div>
+
+    <!-- load the d3.js library -->
+
+    <script src="../d3/d3.js"></script>
+    <link rel="stylesheet" href="css/w3css.css">
+    <script>
+/**
+		This chart takes the live risk json data 
+		- calculates the number of barriers, activities and risk values
+		- plots the number of activities by date, formatted as dd/mm/yyyy and time
+		- has tooltip for the data detail.
+		NOTE - no provision made for area, nor MAH as filters
+		ALSO - if lots of dates involved, data could get messy as no means to view time window
+**/
+
+
+var myObj, i, j, x = "";
+var activity = "";
+var flattenedData = [];							//%Y-%m-%dT%H:%M:%SZ
+var parseTime = d3.timeParse("%Y-%m-%dT%H:%M:%S%Z");
+var parseUTCDate = d3.utcParse("%Y-%m-%dT%H:%M:%S%Z");
+var formatDate = d3.timeFormat("%d/%m/%Y");
+var formatTime = d3.timeFormat("%H:%M");
+var divhtml="";
+
+// set the dimensions and margins of the graph
+
+var margin = {top: 20, right: 40, bottom: 20, left: 50},
+    width = 960 - margin.left - margin.right, //window.innerWidth
+    height = 400 - margin.top - margin.bottom;
+
+// set the ranges
+var x = d3.scaleTime().range([0, width]);
+var y = d3.scaleLinear().range([height, 0]);
+var xScale = d3.scaleBand(); //for bars
+
+var color = d3.scaleOrdinal(d3.schemeCategory20);
+
+    var svg = d3.select("#riskAPIChart")
+    	.classed("svg-container", true)
+    	.append("svg")
+        //.attr("width", width + margin.left + margin.right)
+        //.attr("height", height + margin.top + margin.bottom)
+        .classed("svg-content-responsive", true)
+        .attr("preserveAspectRatio", "xMinYMin meet")
+   		.attr("viewBox", "0 0 "+( width + margin.left + margin.right)+" "+(height + margin.top + margin.bottom)+"")
+       .append("g")
+        .attr("transform",
+              "translate(" + margin.left + "," + margin.top + ")");
+/**
+ var activities = svg.append("text")
+        .attr("x", (width -60)   )          
+        .attr("y", 0 + 100)
+        .attr("text-anchor", "middle")  
+        .attr("class","activityData")
+        .style("font", "12px sans-serif")
+        .text("activity list will go here");  **/
+        
+// Get the data (substitute json file name for URL
+d3.json("intervals.json", function(error,data)  //"intervals.json"
+
+{
+    if (error) throw error;
+    console.log(data);
+
+    for (z = 0; z < data.length; z++) {
+    
+        //for (myObj in data[z]){
+        var start_date = "";
+        var start_time = "";
+        var end_date = "";
+        var riskLevel = "";
+        var num_Activities = 0;
+        var num_Hazards = 0;
+        var num_barriers = 0;
+        var haz_name = "";
+        var barrier_name = "";
+        var activityID = 0;
+        var activityName = "";
+    	var area = "";
+        var circle_size = 0;
+        var count = 0;
+        var hazard_string = "";
+		var barrier_string = "",linecolour = "grey";
+		
+
+	//add new summary counts to data set
+		data[z].riskValue = 0;
+		data[z].hazardString = "";
+		data[z].numHazards = 0;
+		data[z].numActivities = 0;
+		data[z].numBarriers = 0;
+		data[z].barrierString = "";
+
+	//pick up and parse values
+		if (typeof data[z].impactingActivities !='undefined') {
+			num_Activities = data[z].impactingActivities.length;
+		};
+		
+        start_date = parseTime((data[z].start));    //formatDate(parseTime(data[z].start)); .replace('Z','+00:00')
+        start_time = formatTime(parseTime(data[z].start));
+        end_date =  parseTime(data[z].end);
+        var riskValue = d3.min([15, ( data[z].riskLevel == "LOW" ? 3 :  data[z].riskLevel == "MEDIUM" ? 7 :  data[z].riskLevel== "HIGH" ? 11 : 0)]);
+
+		//add values to dataset
+		data[z].start = start_date;
+		data[z].end = end_date;
+		data[z].start_time = start_time;
+        data[z].riskValue = riskValue;
+        data[z].numActivities = num_Activities;
+        
+        if (typeof data[z].majorHazards !== "undefined") {
+        	num_Hazards = data[z].majorHazards.length;
+        	for (b in data[z].majorHazards){
+				hazard_string = hazard_string + ' '+data[z].majorHazards[b].name;
+			}
+        } 
+        
+        data[z].hazardString = hazard_string;
+        hazard_string = "";
+        data[z].numHazards = num_Hazards;
+        
+        
+	 if (typeof data[z].barriers !=='undefined') {
+			num_barriers = data[z].barriers.length;
+			console.log('num barriers is ', num_barriers);
+			for (b in data[z].barriers){
+				barrier_string = barrier_string + ' '+data[z].barriers[b].type;
+			}
+		} ;
+		
+		data[z].numBarriers = num_barriers;
+		data[z].barrierString = barrier_string;
+		
+		console.log(data[z]); 
+
+    //filter data to only return dates that have activities associated with them
+    data = data.filter(function(d){return d.numActivities != 0});
+
+	console.log('filtered ',data);
+    // sort start dates ascending
+    data.sort(function (a, b) {
+        return a["start"] - b["start"];
+    });
+	
+
+   };  
+   
+    // Scale the range of the data 
+    x.domain(d3.extent(data, function (d) { return d.start; }));
+    y.domain([0, d3.max(data, function (d) { return d.riskValue; }) + 1]);
+    xScale
+      	  .rangeRound([0, width-margin.left-margin.right-50]).padding(0.1)
+          .domain(d3.extent(data, function (d) { return d.start; }));
+
+
+    // set the colour scale
+    var colour = d3.scaleOrdinal(d3.schemeCategory10);
+
+    // define the line
+    var valueline = d3.line()
+        .x(function (d) { return x(d.start); }) //d[i].value.start
+        .y(function (d,i) { return y(d.numActivities); });  //not numActivities
+
+	    var riskline = d3.line()
+        .x(function (d) { return x(d.start); }) //d[i].value.start
+        .y(function (d,i) { return y(d.riskValue); });  //not numActivities
+
+    //this is for the tooltip
+
+    var div = d3.select("body").append("div")
+        .attr("class", "tooltip")
+        .style("opacity", 0);
+        
+	 var div2 = d3.select("body").append("div")
+        .attr("class", "w3-card w3-white w3-round activityList");
+        
+    // append the svg obgect to the body of the page
+    // appends a 'group' element to 'svg'
+    // moves the 'group' element to the top left margin
+
+
+    // Add the 1st X Axis for times
+    svg.append("g")
+        .attr("transform", "translate(0," + height + ")")
+        .attr("class","x-axis")
+        .style("font", "14px sans-serif")
+        .call(d3.axisBottom(x).tickFormat(d3.timeFormat("%H:%M")));
+
+    //this is a 2nd x axis with no line, just dates  
+    svg.append("g")
+        .attr("transform", "translate(0," + (height + 13) + ")")
+        .attr("class", "axis")
+        .style("font", "12px sans-serif")
+        .call(d3.axisBottom(x).ticks(5).tickFormat(d3.timeFormat("%d/%m/%Y")));
+
+    // Add the Y Axis
+    svg.append("g")
+    	.attr("class","y-axis")
+        .call(d3.axisLeft(y));
+
+    // text label for the y axis
+    svg.append("text")
+        .attr("transform", "rotate(-90)")
+        .attr("y", 0 - margin.left)
+        .attr("x", 0 - (height / 2))
+        .attr("dy", "1.65em")
+        .style("text-anchor", "middle")
+         .style("font", "12px sans-serif")
+        .text("Number of Activities");
+        
+     svg.append("path")
+      .data([data])
+      .attr("class", "line")
+      .attr("stroke",linecolour)
+      .attr("d", valueline);
+      
+      /**
+         svg.append("path")
+      .data([data])
+      .attr("class", "riskLine")
+      .attr("stroke","red")
+     .attr("stroke-dasharray", "2,2")
+      .attr("d", riskline);
+      **/
+      
+      svg.append("div2")
+      	.attr("y",150)
+      	.attr("x",150);
+
+        // Add the scatterplot
+        svg.selectAll("dot")
+           .data(data)
+           .enter().append("circle")
+           .attr("class","dot")
+           .attr("r", function (d,i) { return  d.riskValue; })
+           .attr("cx", function (d,i) { return x(d.start); })
+           .attr("cy", function (d,i) { return y(d.numActivities); })
+          // .attr("id", function (d,i) { return 'tag' + d[i].area.replace(/\W+/g, ''); })  //adds same id to dot as the line
+           .style("fill", function (d) { return d.riskLevel == "LOW" ? "green" : d.riskLevel == "MEDIUM" ? "orange" : d.riskLevel == "HIGH" ? "red" : "blue"; })
+           .style("opacity", 1)
+           .on("mouseover", function (d, i) {
+           	 getDetails(d,i);
+               div.transition()
+                   .duration(200)
+                   .style("opacity", .9);
+               div.html(formatDate(d.start) + "<br/>" + formatTime(d.start) + "<br/>" + d.riskLevel + " Risk" + "<br/>" + d.numActivities + " Activities" )
+               .style("left", (d3.event.pageX) + "px")
+               .style("top", (d3.event.pageY - 28) + "px");
+               div2.html(d.activityList+ "<br/>")
+               .style("opacity",1);
+               //.style("left","150px")
+               //.style("top","150px");
+           })
+         .on("mouseout", function (d) {
+             div.transition()
+               .duration(1500)
+               .style("opacity", 0);
+            activities.transition().duration(2000).style("opacity",0);
+        // .on("mousedown", getDetails(d,i));
+         })
+         
+             //add title
+    svg.append("text")
+        .attr("x", (width / 2)-15)             
+        .attr("y", 0 - (margin.top / 2)+7)
+        .attr("text-anchor", "middle")  
+        .attr("class","dateRange")
+        .style("font", "12px sans-serif")
+        .text("Risk Trend from "+ d3.min(data, function (d) { return formatDate(d.start);}) + ' - ' + d3.max(data, function (d) { return formatDate(d.start);
+        			})
+        ); 
+         
+
+   });
+   
+   //gets ids for activities
+   function getDetails(d, i) {
+  	if (!d.impactingActivities) return;
+  		divhtml=" <div class='w3-half' id='activityList'><h5>Activities Impacting Risk</h5> <table class='w3-table w3-striped w3-white w3-hoverable'><tr><th>Id</th><th>Activity Name</th><th>Barrier(s)</th><th>MA Hazard(s)</th></tr>";
+  		var temp_activity_list="";
+  		for (ids in d.impactingActivities){
+  			//console.log("testing ",d.impactingActivities[ids].id);
+  			temp_activity_list = temp_activity_list + "<tr><td><a href = ''> "+d.impactingActivities[ids].id+"</a></td><td>"
+  								+ d.impactingActivities[ids].name+"</td><td>"+d.barrierString+"</td><td>"+d.hazardString+"</td></tr>";
+  			//divhtml = divhtml+" <br/> id:<a href = ''> "+d.impactingActivities[ids].id+"</a> name: "+ d.impactingActivities[ids].name+"";
+  		}
+  		divhtml=divhtml+temp_activity_list+"</table><div>";
+  		d.activityList = divhtml;
+  }
+
+</script>
+</body>
+</html>
